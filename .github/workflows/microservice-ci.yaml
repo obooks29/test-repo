@@ -1,1 +1,104 @@
+name: CI Trigger
 
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**' # Trigger pipeline only when files inside src/ change
+
+permissions:
+  contents: read
+  packages: write 
+
+jobs:
+
+  # JOB 1: Detect changed microservice and prepare image tag
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.generate.outputs.image_tag }}
+      svc_name: ${{ steps.changed_service.outputs.service }}
+
+    steps:
+      # 1. fetch Code Changes
+      - name: Fetch Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Pull full git history to run diffs
+
+
+      # 2. Run git diff to find the exact folder inside src/ that changed
+
+      - name: Check Changed Service
+        id: changed_service
+        run: |
+          CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^src/' | cut -d/ -f2 | head -n 1)
+          echo "service=$CHANGED" >> "$GITHUB_OUTPUT"
+
+      # 3. Tag generation
+      - name: Generate Docker Image Tag
+        id: generate
+        run: echo "image_tag=app:v1.0" >> "$GITHUB_OUTPUT"
+      
+      # 4. Disply Image Tag
+      - name: Display Docker Image
+        run: echo "The image is ${{ steps.generate.outputs.image_tag }}"
+
+
+  # JOB 2: Security - Scans the container before publishing
+  security:
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      scan_status: ${{ steps.scan_step.outputs.scan_status }}
+
+    steps:
+
+      # 1. Pass image tag from the build job output
+      - name: Display Docker Image Tag
+        run: echo "The image to scan is ${{ needs.build.outputs.image_tag }}"
+
+      # 2. Simulate security scan output
+      - name: Security Scan
+        id: scan_step
+        run: |
+          echo "Scanning image: ${{ needs.build.outputs.image_tag }}"
+          echo "scan_status=PASS" >> "$GITHUB_OUTPUT"
+
+  # JOB 3: Publish Job - Runs only if scan_status=PASS
+  publish:
+    needs: [build, security]
+    if: needs.security.outputs.scan_status == 'PASS'
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Login to Gitub container registry
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+
+      # 2. Creates the tag and apply tags
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/${{ needs.build.outputs.svc_name }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      # 3. Push image to GHCR with layer caching
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src/${{ needs.build.outputs.svc_name }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -931,11 +931,18 @@ Before looking at the solution, try to complete the workflow yourself. Answer th
 
 **Question 1: What is the step output?**
 
+
+It’s `image_tag`. That’s the specific name created in Task 2 when `id: generate` saved `image_tag=app:v1.0` into `$GITHUB_OUTPUT`.
+
 ______________________________________
 
 *Hint: Look back at Task 2. You created something with `id: generate` that wrote a value using `$GITHUB_OUTPUT`. The step output is that named value itself — what did the `generate` step produce, and what did you name it?*
 
 **Question 2: What syntax is used to access a step output?**
+
+
+You just call the step ID (`generate`), followed by `outputs`, and then the variable name (`image_tag`).
+
 
 ______________________________________
 
@@ -943,17 +950,24 @@ ______________________________________
 
 **Question 3: What is the job output?**
 
+It’s also called `image_tag`. It was set up under the `build` job’s `outputs:` section, pointing directly to `${{ steps.generate.outputs.image_tag }}` so the whole job can share it.
+
 ______________________________________
 
 *Hint: This is what you defined under the `build:` job's `outputs:` block in Task 4. What did you name it, and which step output does it point to?*
 
 **Question 4: What syntax is used to access a job output from another job?**
 
+Since `security` listed `needs: build`, you swap out `steps` for `needs`, mention the job name (`build`), and grab `outputs.image_tag`.
+
 ______________________________________
 
 *Hint: Compare this to Question 2, but for cross-job access. It starts with `needs` instead of `steps`, because `security` declared `needs: build`. Fill in the job ID and output name.*
 
 **Question 5: Why can't the security job directly use `steps.generate.outputs.image_tag`?**
+
+
+Because `steps` only works inside the exact job where it was created. Each job runs in its own separate virtual environment, so the `security` job can't see what happened inside the `build` job's steps. Exposing it as a job output is the only way to pass that information over to the next job.
 
 ______________________________________
 
