@@ -1,15 +1,11 @@
-name: CI Trigger
+name: Microservice CI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**' # Trigger pipeline only when files inside src/ change
+  workflow_call:
 
 permissions:
   contents: read
-  packages: write 
+  packages: write
 
 jobs:
 
@@ -21,15 +17,13 @@ jobs:
       svc_name: ${{ steps.changed_service.outputs.service }}
 
     steps:
-      # 1. fetch Code Changes
+      # 1. Fetch Code Changes
       - name: Fetch Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # Pull full git history to run diffs
 
-
       # 2. Run git diff to find the exact folder inside src/ that changed
-
       - name: Check Changed Service
         id: changed_service
         run: |
@@ -40,8 +34,8 @@ jobs:
       - name: Generate Docker Image Tag
         id: generate
         run: echo "image_tag=app:v1.0" >> "$GITHUB_OUTPUT"
-      
-      # 4. Disply Image Tag
+
+      # 4. Display Image Tag
       - name: Display Docker Image
         run: echo "The image is ${{ steps.generate.outputs.image_tag }}"
 
@@ -54,7 +48,6 @@ jobs:
       scan_status: ${{ steps.scan_step.outputs.scan_status }}
 
     steps:
-
       # 1. Pass image tag from the build job output
       - name: Display Docker Image Tag
         run: echo "The image to scan is ${{ needs.build.outputs.image_tag }}"
@@ -65,6 +58,7 @@ jobs:
         run: |
           echo "Scanning image: ${{ needs.build.outputs.image_tag }}"
           echo "scan_status=PASS" >> "$GITHUB_OUTPUT"
+
 
   # JOB 3: Publish Job - Runs only if scan_status=PASS
   publish:
@@ -85,7 +79,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 3. Set up Docker Buildx (Required for build-push-action and caching)
+      # 3. Set up Docker Buildx (Neccessary for the build-push-action and caching)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 

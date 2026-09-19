@@ -1,96 +1,19 @@
+name: CI Trigger
+
 on:
   push:
     branches:
       - main
     paths:
-      - 'src/**' # Only trigger if files under src/ change
+      - 'src/**' # Trigger pipeline only when files inside src/ change
 
 permissions:
   contents: read
-  packages: write # Needed to push images to GHCR
+  packages: write
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      svc: ${{ steps.get_svc.outputs.svc }}
-      img_tag: ${{ steps.meta.outputs.tags }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Need full git history to compare commits
-
-      # 1. Check git diff to find which service folder inside src/ was modified
-      - name: Find modified service
-        id: get_svc
-        run: |
-          TARGET=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep '^src/' | cut -d/ -f2 | head -n 1)
-          echo "svc=$TARGET" >> "$GITHUB_OUTPUT"
-
-      - uses: docker/setup-buildx-action@v3
-
-      # 2. Generate image tags using the dynamic service name
-      - name: Set up tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/${{ steps.get_svc.outputs.svc }}
-          tags: |
-            type=raw,value=latest
-            type=sha,format=short
-
-      # 3. Build image on my machine and save layers to GitHub cache 
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: ./src/${{ steps.get_svc.outputs.svc }}
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  security:
-    needs: build
-    runs-on: ubuntu-latest
-    outputs:
-      status: ${{ steps.scan_check.outputs.status }}
-
-    steps:
-
-      # 1. Simulate vulnerability scan on the tag produced in the build job
-      - name: Check container security
-        id: scan_check
-        run: |
-          echo "Scanning ${{ needs.build.outputs.img_tag }}..."
-          echo "status=PASS" >> "$GITHUB_OUTPUT"
-
-  publish:
-    needs: [build, security]
-    if: needs.security.outputs.status == 'PASS' # Security gate: only publish if condition is met i.e if scan is passed
-    runs-on: ubuntu-latest
-
-    steps:
-      # 1. Download repo code so Docker can find ./src/
-      
-      - uses: actions/checkout@v4
-      
-      # 2. Set up build
-      - uses: docker/setup-buildx-action@v3
-
-      # 3. Login to GHCR
-      - name: GHCR Login
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Re-build from cache hit and push to registry
-      - name: Push to registry
-        uses: docker/build-push-action@v6
-        with:
-          context: ./src/${{ needs.build.outputs.svc }}
-          push: true
-          tags: ${{ needs.build.outputs.img_tag }}
-          cache-from: type=gha
+  run-microservice-ci:
+    uses: ./.github/workflows/microservice-ci.yaml
+    permissions:
+      contents: read
+      packages: write
