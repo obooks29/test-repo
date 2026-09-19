@@ -2,7 +2,7 @@
 
 # Triggering CI pipeline test
 #
-# Triggering a test to test workflow
+# Triggering a test to test changes in the CI-trigger workflow
 # Copyright 2018 Google LLC
 #
 
